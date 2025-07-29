@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="card">
+        <div class="card-header">
+            <h1 class="card-title">Welcome to Canary Token Server</h1>
+        </div>
+        <div class="card-body">
+            <p>Canary tokens are digital tripwires that alert you when someone accesses them. They can be placed in documents, URLs, or other digital assets to detect unauthorized access.</p>
+            
+            <div class="dashboard" style="margin-top: 2rem;">
+                <div class="stat-card">
+                    <i class="fas fa-link fa-2x" style="color: var(--primary-color);"></i>
+                    <div class="stat-value">{{ url_tokens }}</div>
+                    <div class="stat-label">URL Tokens</div>
+                </div>
+                <div class="stat-card">
+                    <i class="fas fa-file-word fa-2x" style="color: var(--primary-color);"></i>
+                    <div class="stat-value">{{ doc_tokens }}</div>
+                    <div class="stat-label">Word Tokens</div>
+                </div>
+                <div class="stat-card">
+                    <i class="fas fa-bell fa-2x" style="color: var(--primary-color);"></i>
+                    <div class="stat-value">{{ alerts }}</div>
+                    <div class="stat-label">Alerts Triggered</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Quick Actions</h2>
+        </div>
+        <div class="card-body" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem;">
+            <a href="/generate" class="btn"><i class="fas fa-link"></i> Generate URL Token</a>
+            <a href="/word-token" class="btn"><i class="fas fa-file-word"></i> Generate Word Token</a>
+            <a href="/alerts" class="btn"><i class="fas fa-bell"></i> View Alerts</a>
+        </div>
+    </div>
+{% endblock %}

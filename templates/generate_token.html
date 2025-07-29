@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="card">
+        <div class="card-header">
+            <h1 class="card-title">Generate URL Canary Token</h1>
+        </div>
+        <div class="card-body">
+            <p>This will create a unique URL that will alert you when accessed. Place this URL in sensitive documents or systems to detect unauthorized access.</p>
+            
+            <div class="token-display" id="tokenUrl">
+                {{ url }}
+                <button class="copy-btn" onclick="copyToClipboard('tokenUrl')">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+            
+            <p><strong>Instructions:</strong></p>
+            <ol>
+                <li>Copy the URL above</li>
+                <li>Place it in sensitive documents, emails, or systems</li>
+                <li>You'll receive an alert when someone accesses this URL</li>
+            </ol>
+            
+            <a href="/generate" class="btn"><i class="fas fa-sync-alt"></i> Generate Another Token</a>
+        </div>
+    </div>
+{% endblock %}
