@@ -11,9 +11,9 @@ app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
 LOG_FILE = "alerts.log"
 
-EMAIL_ADDRESS = "pundirved09@gmail.com"
-EMAIL_PASSWORD = "pnmaayexiejdikhr"
-TO_EMAIL = "pundirved09@gmail.com"
+EMAIL_ADDRESS = ""
+EMAIL_PASSWORD = ""
+TO_EMAIL = ""
 
 if not os.path.exists(LOG_FILE):
     open(LOG_FILE, 'w').close()
