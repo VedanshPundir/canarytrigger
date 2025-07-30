@@ -6,6 +6,7 @@ from docx import Document
 import requests
 import smtplib
 from email.message import EmailMessage
+import sqlite3
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
@@ -125,30 +126,92 @@ def generate_doc_token():
 
     return send_file(file_path, as_attachment=True)
 
-@app.route("/trigger/<token>")
+@app.route("/trigger/<token>", methods=["GET", "POST"])
 def trigger(token):
     ip = request.headers.get("X-Forwarded-For", request.remote_addr)
     user_agent = request.headers.get("User-Agent", "Unknown")
     location_info = get_location(ip)
     timestamp = datetime.datetime.now().isoformat()
+    lat, lon = location_info['loc'].split(",")
 
-    log_line = (
-        f"[{timestamp}] ALERT: Token {token}\n"
-        f"IP: {ip}\n"
-        f"Location: {location_info['text']} (Coordinates: {location_info['loc']})\n"
-        f"User-Agent: {user_agent}\n\n"
-    )
+    if request.method == "POST":
+        message = request.form.get("message", "").strip()
+        if message:
+            # Save to database
+            conn = sqlite3.connect("alerts.db")
+            c = conn.cursor()
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS confessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    token TEXT,
+                    ip TEXT,
+                    location TEXT,
+                    latitude TEXT,
+                    longitude TEXT,
+                    user_agent TEXT,
+                    message TEXT,
+                    timestamp TEXT
+                )
+            ''')
+            c.execute('''
+                INSERT INTO confessions (token, ip, location, latitude, longitude, user_agent, message, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (token, ip, location_info["text"], lat, lon, user_agent, message, timestamp))
+            conn.commit()
+            conn.close()
 
-    with open(LOG_FILE, "a") as f:
-        f.write(log_line)
+        # Also log it like a normal alert
+        log_line = (
+            f"[{timestamp}] ALERT: Token {token}\n"
+            f"IP: {ip}\n"
+            f"Location: {location_info['text']} (Coordinates: {location_info['loc']})\n"
+            f"User-Agent: {user_agent}\n"
+            f"Message: {message}\n\n"
+        )
 
-    send_email_alert("🚨 Canary Token Triggered", log_line)
-    return "📌 Token triggered and email sent."
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(log_line)
+
+        send_email_alert("🚨 Canary Token Triggered", log_line)
+        return render_template("confess.html", submitted=True)
+
+    return render_template("confess.html", token=token)
+"""@app.route("/alerts")
+def view_alerts():
+    alerts = parse_alerts()
+
+    # Load confessions
+    conn = sqlite3.connect("alerts.db")
+    c = conn.cursor()
+    c.execute("SELECT token, ip, location, latitude, longitude, user_agent, message, timestamp FROM confessions ORDER BY id DESC")
+    confessions = c.fetchall()
+    conn.close()
+
+
+
+    return render_template("alerts.html", alerts=alerts[::-1], confessions=confessions)"""
 
 @app.route("/alerts")
 def view_alerts():
     alerts = parse_alerts()
-    return render_template("alerts.html", alerts=alerts[::-1])
+
+    # Load and group confessions
+    conn = sqlite3.connect("alerts.db")
+    c = conn.cursor()
+    c.execute("SELECT token, message, timestamp FROM confessions ORDER BY id DESC")
+    confessions = c.fetchall()
+    conn.close()
+
+    grouped_confessions = {}
+    for token, message, timestamp in confessions:
+        if token not in grouped_confessions:
+            grouped_confessions[token] = []
+        grouped_confessions[token].append({
+            "message": message,
+            "timestamp": timestamp
+        })
+
+    return render_template("alerts.html", alerts=alerts[::-1], grouped_confessions=grouped_confessions)
 
 @app.route("/clear-alerts")
 def clear_alerts():
