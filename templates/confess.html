@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Submit Confidential Message</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f4f6f9;
+    }
+
+    header {
+      background-color: #002147;
+      color: white;
+      text-align: center;
+      padding: 20px;
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 60px auto;
+      background: white;
+      padding: 30px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      border-radius: 12px;
+      animation: fadeIn 0.5s ease-in-out;
+    }
+
+    h2 {
+      text-align: center;
+      color: #002147;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 15px;
+      font-size: 16px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      resize: none;
+      background-color: #f7f9fc;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      color: white;
+      background-color: #002147;
+      border: none;
+      border-radius: 30px;
+      margin-top: 15px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .thanks {
+      background: linear-gradient(to right, #a8e063, #56ab2f);
+      color: white;
+      padding: 30px 20px;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+      text-align: center;
+      animation: popIn 0.6s ease;
+    }
+
+    .thanks .icon {
+      font-size: 3rem;
+      margin-bottom: 10px;
+      animation: bounce 1s ease infinite alternate;
+    }
+
+    .thanks h3 {
+      margin: 0 0 10px;
+      font-size: 1.5rem;
+    }
+
+    .thanks p {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    footer {
+      background-color: #002147;
+      color: white;
+      text-align: center;
+      padding: 16px 0;
+      margin-top: 60px;
+      font-size: 0.9rem;
+    }
+
+    @keyframes popIn {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    @keyframes bounce {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(-5px); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+<header>UPES Cybersecurity Confession Portal</header>
+
+<div class="container">
+  <h2>Submit Your Message</h2>
+
+  {% if submitted %}
+    <div class="thanks">
+      <div class="icon">✅</div>
+      <h3>Thanks for your submission!</h3>
+      <p>Your message has been securely received by the UPES Cybersecurity team.</p>
+    </div>
+  {% else %}
+    <form method="POST">
+      <textarea name="message" rows="6" placeholder="Enter your message here..." required></textarea>
+      <button type="submit">Send Message</button>
+    </form>
+  {% endif %}
+</div>
+
+<footer>
+  🔒 Powered by the CYBERsecurity Cell, University of Petroleum and Energy Studies (UPES)
+</footer>
+
+</body>
+</html>
