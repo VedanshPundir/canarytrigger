@@ -27,37 +27,50 @@
                     <tbody>
                         {% for alert in alerts %}
                         <tr>
-                            <td class="text-muted" style="white-space: nowrap; font-size: 0.9rem;">{{ alert.timestamp }}</td>
-                            <td><code class="text-primary" style="font-size: 0.9rem; font-family: 'Fira Code', monospace;">{{ alert.token }}</code></td>
-                            <td style="font-size: 0.9rem;">{{ alert.ip }}</td>
-                            <td style="font-size: 0.9rem;">{{ alert.location or "Unknown" }}</td>
-                            <td style="max-width: 250px; font-size: 0.9rem;">
-                                <span class="d-inline-block text-truncate" style="max-width: 240px; font-family: 'Inter', sans-serif;" title="{{ alert.user_agent }}">
+                            <td class="text-muted">{{ alert.timestamp }}</td>
+                            <td><code class="text-primary">{{ alert.token }}</code></td>
+                            <td>{{ alert.ip }}</td>
+                            <td>{{ alert.location or "Unknown" }}</td>
+                            <td style="max-width: 250px;">
+                                <span class="d-inline-block text-truncate" style="max-width: 240px;" title="{{ alert.user_agent }}">
                                     {{ alert.user_agent }}
                                 </span>
                             </td>
                             <td>
                                 {% if alert.latitude and alert.longitude %}
-                                <a href="/map?lat={{ alert.latitude }}&lon={{ alert.longitude }}" target="_blank" class="btn btn-outline-primary btn-sm fw-medium" style="font-size: 0.85rem; font-family: 'Roboto', sans-serif;">
+                                <a href="/map?lat={{ alert.latitude }}&lon={{ alert.longitude }}" target="_blank" class="btn btn-outline-primary btn-sm fw-medium">
                                     <i class="fas fa-map-marked-alt"></i> Map
                                 </a>
                                 {% else %}
-                                <span class="text-muted" style="font-size: 0.9rem;">N/A</span>
+                                <span class="text-muted">N/A</span>
                                 {% endif %}
                             </td>
                         </tr>
+
+                        {% if alert.token in grouped_confessions %}
+                            {% for confession in grouped_confessions[alert.token] %}
+                            <tr>
+                                <td colspan="6" class="bg-light text-dark" style="font-size: 0.9rem;">
+                                    <div><strong>💬 Message:</strong> <em>{{ confession.message }}</em></div>
+                                    <div class="text-muted"><strong>🕒:</strong> {{ confession.timestamp }}</div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% endif %}
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
             {% else %}
-            <div class="alert alert-info m-3 text-center" style="font-size: 1rem; font-family: 'Inter', sans-serif;">
+            <div class="alert alert-info m-3 text-center">
                 <i class="fas fa-info-circle"></i> No alerts triggered yet.
             </div>
             {% endif %}
         </div>
     </div>
 </div>
+
+<!-- 🔔 Alert Sound -->
 <audio id="alertSound" src="{{ url_for('static', filename='piece-of-cake-611.mp3') }}" preload="auto"></audio>
 
 <script>
@@ -69,11 +82,11 @@
             const data = await response.json();
             if (data.count > lastAlertCount) {
                 const audio = document.getElementById("alertSound");
-                audio.currentTime = 0;     // rewind to start
-                audio.volume = 0.7;        // adjust volume (0.0 to 1.0)
+                audio.currentTime = 0;
+                audio.volume = 0.7;
                 audio.play();
                 lastAlertCount = data.count;
-                location.reload();         // refresh to show alert
+                location.reload();
             }
         } catch (err) {
             console.error("Error checking alerts:", err);
