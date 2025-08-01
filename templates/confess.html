@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Submit Confidential Message</title>
+  <title>Password Strength Checker</title>
   <style>
     body {
       margin: 0;
@@ -35,14 +35,34 @@
       color: #002147;
     }
 
-    textarea {
+    input[type="password"] {
       width: 100%;
       padding: 15px;
       font-size: 16px;
       border-radius: 10px;
       border: 1px solid #ccc;
-      resize: none;
       background-color: #f7f9fc;
+      margin-bottom: 10px;
+    }
+
+    #strength-meter {
+      height: 10px;
+      background: #e0e0e0;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    #strength-bar {
+      height: 100%;
+      width: 0%;
+      transition: 0.3s;
+    }
+
+    #strength-text, #crack-time {
+      margin: 5px 0 15px;
+      font-size: 0.95rem;
+      font-weight: bold;
     }
 
     button {
@@ -53,35 +73,9 @@
       background-color: #002147;
       border: none;
       border-radius: 30px;
-      margin-top: 15px;
+      margin-top: 10px;
       cursor: pointer;
       font-weight: bold;
-    }
-
-    .thanks {
-      background: linear-gradient(to right, #a8e063, #56ab2f);
-      color: white;
-      padding: 30px 20px;
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-      text-align: center;
-      animation: popIn 0.6s ease;
-    }
-
-    .thanks .icon {
-      font-size: 3rem;
-      margin-bottom: 10px;
-      animation: bounce 1s ease infinite alternate;
-    }
-
-    .thanks h3 {
-      margin: 0 0 10px;
-      font-size: 1.5rem;
-    }
-
-    .thanks p {
-      margin: 0;
-      font-size: 1rem;
     }
 
     footer {
@@ -93,16 +87,6 @@
       font-size: 0.9rem;
     }
 
-    @keyframes popIn {
-      from { transform: scale(0.95); opacity: 0; }
-      to { transform: scale(1); opacity: 1; }
-    }
-
-    @keyframes bounce {
-      0% { transform: translateY(0); }
-      100% { transform: translateY(-5px); }
-    }
-
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
@@ -111,21 +95,24 @@
 </head>
 <body>
 
-<header>UPES Cybersecurity Confession Portal</header>
+<header>UPES Cybersecurity Password Strength Portal</header>
 
 <div class="container">
-  <h2>Submit Your Message</h2>
+  <h2>Check Password Strength</h2>
 
   {% if submitted %}
     <div class="thanks">
       <div class="icon">✅</div>
-      <h3>Thanks for your submission!</h3>
-      <p>Your message has been securely received by the UPES Cybersecurity team.</p>
+      <h3>Thank you!</h3>
+      <p>Your password strength has been recorded securely by the Cybersecurity team.</p>
     </div>
   {% else %}
     <form method="POST">
-      <textarea name="message" rows="6" placeholder="Enter your message here..." required></textarea>
-      <button type="submit">Send Message</button>
+      <input type="password" name="message" id="password" placeholder="Enter your password..." required />
+      <div id="strength-meter"><div id="strength-bar"></div></div>
+      <div id="strength-text">Strength: </div>
+      <div id="crack-time">Estimated Crack Time: </div>
+      <button type="submit">Submit Password</button>
     </form>
   {% endif %}
 </div>
@@ -133,6 +120,59 @@
 <footer>
   🔒 Powered by the CYBERsecurity Cell, University of Petroleum and Energy Studies (UPES)
 </footer>
+
+<script>
+  const passwordInput = document.getElementById("password");
+  const strengthBar = document.getElementById("strength-bar");
+  const strengthText = document.getElementById("strength-text");
+  const crackTime = document.getElementById("crack-time");
+
+  passwordInput.addEventListener("input", () => {
+    const pwd = passwordInput.value;
+    let score = 0;
+    let charsetSize = 0;
+
+    if (/[a-z]/.test(pwd)) { score++; charsetSize += 26; }
+    if (/[A-Z]/.test(pwd)) { score++; charsetSize += 26; }
+    if (/[0-9]/.test(pwd)) { score++; charsetSize += 10; }
+    if (/[^A-Za-z0-9]/.test(pwd)) { score++; charsetSize += 32; }  // special chars estimate
+
+    const entropy = pwd.length * Math.log2(charsetSize || 1);
+    const guessesPerSecond = 1e9; // 1 billion guesses/sec
+    const secondsToCrack = Math.pow(2, entropy) / guessesPerSecond;
+
+    const timeToCrack = formatCrackTime(secondsToCrack);
+
+    const levels = [
+      { text: "Very Weak", color: "#ff4d4d", width: "20%" },
+      { text: "Weak", color: "#ff944d", width: "40%" },
+      { text: "Moderate", color: "#ffcc00", width: "60%" },
+      { text: "Strong", color: "#99cc00", width: "80%" },
+      { text: "Very Strong", color: "#2ecc71", width: "100%" },
+    ];
+
+    const level = levels[score - 1] || levels[0];
+    strengthBar.style.width = level.width;
+    strengthBar.style.backgroundColor = level.color;
+    strengthText.textContent = "Strength: " + level.text;
+    crackTime.textContent = "Estimated Crack Time: " + timeToCrack;
+  });
+
+  function formatCrackTime(seconds) {
+    if (seconds < 1) return "Instantly";
+    const mins = seconds / 60;
+    const hours = mins / 60;
+    const days = hours / 24;
+    const years = days / 365;
+
+    if (years > 1000) return "🛡️ Over 1000 years";
+    if (years >= 1) return `${years.toFixed(1)} years`;
+    if (days >= 1) return `${days.toFixed(1)} days`;
+    if (hours >= 1) return `${hours.toFixed(1)} hours`;
+    if (mins >= 1) return `${mins.toFixed(1)} minutes`;
+    return `${seconds.toFixed(1)} seconds`;
+  }
+</script>
 
 </body>
 </html>

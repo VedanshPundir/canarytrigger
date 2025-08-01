@@ -1,28 +1,41 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <div class="card">
-        <div class="card-header">
-            <h1 class="card-title">Generate URL Canary Token</h1>
-        </div>
-        <div class="card-body">
-            <p>This will create a unique URL that will alert you when accessed. Place this URL in sensitive documents or systems to detect unauthorized access.</p>
-            
-            <div class="token-display" id="tokenUrl">
-                {{ url }}
-                <button class="copy-btn" onclick="copyToClipboard('tokenUrl')">
-                    <i class="fas fa-copy"></i> Copy
-                </button>
-            </div>
-            
-            <p><strong>Instructions:</strong></p>
-            <ol>
-                <li>Copy the URL above</li>
-                <li>Place it in sensitive documents, emails, or systems</li>
-                <li>You'll receive an alert when someone accesses this URL</li>
-            </ol>
-            
-            <a href="/generate" class="btn"><i class="fas fa-sync-alt"></i> Generate Another Token</a>
-        </div>
+<div class="card">
+    <div class="card-header">
+        <h1 class="card-title">Generate URL Canary Token</h1>
     </div>
+    <div class="card-body">
+        <p>This will create a unique URL that will alert you when accessed. Place this URL in sensitive documents or systems to detect unauthorized access.</p>
+
+        {% if url %}
+        <div class="token-display" id="tokenUrl">
+            {{ url }}
+            <button class="copy-btn" onclick="copyToClipboard('tokenUrl')">
+                <i class="fas fa-copy"></i> Copy
+            </button>
+        </div>
+        {% endif %}
+
+        {% if image_url %}
+        <div class="mt-4">
+            <h5>🔐 Stego Image:</h5>
+            <p>You can also send this image. When it's downloaded, you'll receive an alert.</p>
+            <img src="{{ image_url }}" alt="Stego Image" class="img-thumbnail" style="max-width: 300px;">
+            <div class="mt-2">
+                <a href="{{ image_url }}" download class="btn btn-success"><i class="fas fa-download"></i> Download Image</a>
+            </div>
+        </div>
+        {% endif %}
+
+        <p class="mt-4"><strong>Instructions:</strong></p>
+        <ol>
+            <li>Copy the URL above</li>
+            <li>Place it in sensitive documents, emails, or systems</li>
+            <li>Or share the image — you'll receive alerts either way</li>
+        </ol>
+
+        <a href="/generate" class="btn btn-primary"><i class="fas fa-sync-alt"></i> Generate Another Token</a>
+    </div>
+</div>
 {% endblock %}

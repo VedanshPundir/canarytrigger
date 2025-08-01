@@ -5,8 +5,10 @@ import uuid
 from docx import Document
 import requests
 import smtplib
+import qrcode
 from email.message import EmailMessage
 import sqlite3
+import json
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
@@ -86,14 +88,47 @@ def parse_alerts():
                 print(f"Parse error: {e}")
                 continue
     return alerts
+SPLUNK_HEC_URL = "http://localhost:8088/services/collector/event"
+SPLUNK_TOKEN = "dec81388-b21e-48e2-bd80-afd884974974"
+
+def send_to_splunk(token, ip, location, user_agent, message, timestamp, username=None, password=None, success=None, attempts=None):
+    payload = {
+        "event": {
+            "token": token,
+            "ip": ip,
+            "location": location,
+            "user_agent": user_agent,
+            "message": message,
+            "timestamp": timestamp,
+            "username": username,
+            "password": password,
+            "login_success": success,
+            "login_attempts": attempts
+        },
+        "sourcetype": "_json"
+    }
+
+    headers = {
+        "Authorization": f"Splunk {SPLUNK_TOKEN}"
+    }
+
+    try:
+        res = requests.post(SPLUNK_HEC_URL, headers=headers, data=json.dumps(payload), verify=False)
+        if res.status_code != 200:
+            print("Splunk HEC Error:", res.text)
+    except Exception as e:
+        print("Error sending to Splunk:", e)
+
 @app.route('/alerts-count')
 def alerts_count():
     count = 0
     try:
         with open("alerts.log", "r") as file:
-            count = sum(1 for _ in file)
-    except:
-        pass
+            content = file.read().strip()
+            if content:
+                count = len(content.split("\n\n"))
+    except Exception as e:
+        print(f"Error reading alerts.log: {e}")
     return {"count": count}
 
 @app.route("/")
@@ -115,14 +150,27 @@ def generate_doc_token():
     token = str(uuid.uuid4())
     url = request.host_url + "trigger/" + token
 
+    # Create Word Document
     document = Document()
     document.add_heading('Company Confidential', 0)
-    document.add_paragraph('This document is sensitive.')
-    document.add_paragraph(f'Hidden link: {url}')
+    document.add_paragraph('This document is sensitive and should only be accessed by the legitimate user.')
 
+    # Generate QR Code
+    qr = qrcode.make(url)
+    os.makedirs("qrcodes", exist_ok=True)
+    qr_path = f"qrcodes/{token}.png"
+    qr.save(qr_path)
+
+    # Insert QR Code into Word Document
+    document.add_paragraph("Scan this QR code to access:")
+    document.add_picture(qr_path)
+
+    # Save DOCX
     os.makedirs("tokens", exist_ok=True)
     file_path = f"tokens/{token}.docx"
     document.save(file_path)
+
+    return send_file(file_path, as_attachment=True)
 
     return send_file(file_path, as_attachment=True)
 
@@ -134,48 +182,93 @@ def trigger(token):
     timestamp = datetime.datetime.now().isoformat()
     lat, lon = location_info['loc'].split(",")
 
-    if request.method == "POST":
-        message = request.form.get("message", "").strip()
-        if message:
-            # Save to database
-            conn = sqlite3.connect("alerts.db")
-            c = conn.cursor()
-            c.execute('''
-                CREATE TABLE IF NOT EXISTS confessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    token TEXT,
-                    ip TEXT,
-                    location TEXT,
-                    latitude TEXT,
-                    longitude TEXT,
-                    user_agent TEXT,
-                    message TEXT,
-                    timestamp TEXT
-                )
-            ''')
-            c.execute('''
-                INSERT INTO confessions (token, ip, location, latitude, longitude, user_agent, message, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (token, ip, location_info["text"], lat, lon, user_agent, message, timestamp))
-            conn.commit()
-            conn.close()
+    conn = sqlite3.connect("alerts.db")
+    c = conn.cursor()
 
-        # Also log it like a normal alert
+    # Create vulnerable login table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS login_honeypot (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token TEXT,
+            ip TEXT,
+            location TEXT,
+            latitude TEXT,
+            longitude TEXT,
+            user_agent TEXT,
+            username TEXT,
+            password TEXT,
+            success INTEGER,
+            timestamp TEXT
+        )
+    ''')
+
+    # Count attempts from this IP/token
+    c.execute("SELECT COUNT(*) FROM login_honeypot WHERE ip = ? AND token = ?", (ip, token))
+    attempt_count = c.fetchone()[0]
+
+    success = False
+    username = password = ""
+
+    if request.method == "POST":
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+
+        # INTENTIONAL VULNERABLE QUERY
+        query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
+
+        try:
+            c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT, password TEXT)')
+            c.execute("INSERT INTO users (username, password) VALUES ('admin', 'admin123')")  # dummy
+            conn.commit()
+            c.execute(query)
+            result = c.fetchone()
+            if result:
+                success = True
+        except Exception as e:
+            print("SQL Error:", e)
+
+        # Log to DB
+        c.execute('''
+            INSERT INTO login_honeypot (token, ip, location, latitude, longitude, user_agent, username, password, success, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (token, ip, location_info["text"], lat, lon, user_agent, username, password, int(success), timestamp))
+        conn.commit()
+
+        # Log to alerts.log
         log_line = (
-            f"[{timestamp}] ALERT: Token {token}\n"
+            f"[{timestamp}] Token {token}\n"
             f"IP: {ip}\n"
-            f"Location: {location_info['text']} (Coordinates: {location_info['loc']})\n"
+            f"Location: {location_info['text']} (Coordinates: {lat},{lon})\n"
             f"User-Agent: {user_agent}\n"
-            f"Message: {message}\n\n"
+            f"Username: {username} | Password: {password}\n"
+            f"Login Success: {success}\n\n"
         )
 
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(log_line)
 
-        send_email_alert("🚨 Canary Token Triggered", log_line)
-        return render_template("confess.html", submitted=True)
+        # Send alerts
+        send_email_alert("🚨 Login Honeypot Triggered", log_line)
+        send_to_splunk(
+            token=token,
+            ip=ip,
+            location=location_info["text"],
+            user_agent=user_agent,
+            message=f"{username}:{password}",
+            timestamp=timestamp,
+            username=username,
+            password=password,
+            success=success,
+            attempts=attempt_count + 1 if not success else attempt_count
+        )
 
-    return render_template("confess.html", token=token)
+    conn.close()
+
+    return render_template("login.html", success=success, attempts=(attempt_count + 1 if not success else attempt_count))
+
+    conn.close()
+
+    return render_template("login.html", success=success, attempts=(attempt_count + 1 if not success else attempt_count))
 """@app.route("/alerts")
 def view_alerts():
     alerts = parse_alerts()

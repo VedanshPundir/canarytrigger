@@ -7,19 +7,40 @@ import requests
 import smtplib
 from email.message import EmailMessage
 import sqlite3
-from database import init_db
-init_db()
+from PIL import Image, ImageDraw, ImageFont
+import stepic
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
 LOG_FILE = "alerts.log"
 
-EMAIL_ADDRESS = ""
-EMAIL_PASSWORD = ""
-TO_EMAIL = ""
+EMAIL_ADDRESS = "your_email@gmail.com"
+EMAIL_PASSWORD = "your_app_password"
+TO_EMAIL = "alert_recipient@example.com"
+
+# Ensure required directories exist
+os.makedirs("stego_images", exist_ok=True)
+os.makedirs("tokens", exist_ok=True)
+os.makedirs("static", exist_ok=True)
 
 if not os.path.exists(LOG_FILE):
     open(LOG_FILE, 'w').close()
+
+# Create a tiny transparent pixel image for tracking
+transparent_pixel_path = "static/transparent.png"
+if not os.path.exists(transparent_pixel_path):
+    img = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
+    img.save(transparent_pixel_path)
+base_image_path = "static/base.jpeg"
+if not os.path.exists(base_image_path):
+    img = Image.new('RGB', (800, 600), color=(73, 109, 137))
+    d = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("arial.ttf", 40)
+    except:
+        font = ImageFont.load_default()
+    d.text((100, 300), "COMPANY CONFIDENTIAL", fill=(255, 255, 255), font=font)
+    img.save(base_image_path)
 
 def send_email_alert(subject, body):
     try:
@@ -55,24 +76,40 @@ def get_location(ip):
         return {"text": "Unknown", "loc": "0,0"}
 
 def parse_alerts():
-    conn = sqlite3.connect('alerts.db')
-    c = conn.cursor()
-    c.execute("SELECT timestamp, token, ip, location, latitude, longitude, user_agent FROM alerts ORDER BY id DESC")
-    rows = c.fetchall()
-    conn.close()
-
     alerts = []
-    for row in rows:
-        alerts.append({
-            "timestamp": row[0],
-            "token": row[1],
-            "ip": row[2],
-            "location": row[3],
-            "latitude": row[4],
-            "longitude": row[5],
-            "user_agent": row[6]
-        })
+    with open(LOG_FILE, "r") as f:
+        blocks = f.read().strip().split("\n\n")
+        for entry in blocks:
+            lines = entry.strip().split("\n")
+            try:
+                timestamp = lines[0].split("]")[0][1:]
+                token = lines[0].split("Token ")[1]
+                ip = lines[1].split("IP: ")[1]
+                location_line = lines[2].split("Location: ")[1]
+                user_agent = lines[3].split("User-Agent: ")[1]
+                
+                if "(Coordinates:" in location_line:
+                    location_text = location_line.split(" (Coordinates:")[0]
+                    coords = location_line.split("Coordinates: ")[1].strip(")")
+                    lat, lon = coords.split(",")
+                else:
+                    location_text = location_line
+                    lat, lon = "0", "0"
+
+                alerts.append({
+                    "timestamp": timestamp,
+                    "token": token,
+                    "ip": ip,
+                    "location": location_text,
+                    "user_agent": user_agent,
+                    "latitude": lat,
+                    "longitude": lon
+                })
+            except Exception as e:
+                print(f"Parse error: {e}")
+                continue
     return alerts
+
 @app.route('/alerts-count')
 def alerts_count():
     count = 0
@@ -95,7 +132,75 @@ def home():
 def generate_url_token():
     token = str(uuid.uuid4())
     url = request.host_url + "trigger/" + token
-    return render_template("generate_token.html", url=url)
+    tracking_url = request.host_url + "track/" + token
+
+    # Create steganography image
+    try:
+        image = Image.open(base_image_path)
+        encoded = stepic.encode(image, url.encode())
+        stego_path = f"stego_images/{token}.png"
+        
+        # Add visible watermark
+        draw = ImageDraw.Draw(encoded)
+        try:
+            # Try to load a nice font
+            font = ImageFont.truetype("arial.ttf", 20)
+        except IOError:
+            # Fall back to default font if arial isn't available
+            font = ImageFont.load_default()
+        
+        # Add watermark text
+        watermark_text = "INTERNAL USE ONLY"
+        text_width, text_height = draw.textsize(watermark_text, font=font)
+        
+        # Position watermark in bottom right corner
+        margin = 10
+        x = image.width - text_width - margin
+        y = image.height - text_height - margin
+        
+        draw.text((x, y), watermark_text, fill=(255, 0, 0, 128), font=font)
+        encoded.save(stego_path, "PNG")
+        
+    except Exception as e:
+        print(f"Error creating stego image: {e}")
+        flash("Error generating token image", "error")
+        return redirect(url_for("home"))
+
+    # Save token to suppress sender's download alert
+    with open("sent_tokens.txt", "a") as f:
+        f.write(token + "\n")
+
+    return render_template("generate_token.html", 
+                         url=url,
+                         image_url=f"/download-stego/{token}",
+                         tracking_pixel=tracking_url)
+@app.route("/track/<token>")
+def track_image_open(token):
+    # Check if this is the sender accessing their own token
+    with open("sent_tokens.txt", "r") as f:
+        sent_tokens = f.read().splitlines()
+    if token in sent_tokens:
+        return send_file(transparent_pixel_path, mimetype='image/png')
+
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+    user_agent = request.headers.get("User-Agent", "Unknown")
+    timestamp = datetime.datetime.now().isoformat()
+    location_info = get_location(ip)
+    lat, lon = location_info['loc'].split(",")
+
+    log_line = (
+        f"[{timestamp}] 👁 Stego Image Viewed: Token {token}\n"
+        f"IP: {ip}\n"
+        f"Location: {location_info['text']} (Coordinates: {lat},{lon})\n"
+        f"User-Agent: {user_agent}\n\n"
+    )
+
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(log_line)
+
+    send_email_alert("👁 Stego Image Viewed", log_line)
+    
+    return send_file(transparent_pixel_path, mimetype='image/png')
 
 @app.route("/word-token")
 def generate_doc_token():
@@ -107,60 +212,113 @@ def generate_doc_token():
     document.add_paragraph('This document is sensitive.')
     document.add_paragraph(f'Hidden link: {url}')
 
-    os.makedirs("tokens", exist_ok=True)
     file_path = f"tokens/{token}.docx"
     document.save(file_path)
 
     return send_file(file_path, as_attachment=True)
 
-@app.route("/trigger/<token>")
+@app.route("/trigger/<token>", methods=["GET", "POST"])
 def trigger(token):
     ip = request.headers.get("X-Forwarded-For", request.remote_addr)
     user_agent = request.headers.get("User-Agent", "Unknown")
     location_info = get_location(ip)
     timestamp = datetime.datetime.now().isoformat()
+    lat, lon = location_info['loc'].split(",")
 
-    conn = sqlite3.connect('alerts.db')
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO alerts (timestamp, token, ip, location, latitude, longitude, user_agent)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        timestamp,
-        token,
-        ip,
-        location_info['text'],
-        location_info['loc'].split(',')[0],
-        location_info['loc'].split(',')[1],
-        user_agent
-    ))
-    conn.commit()
-    conn.close()
+    if request.method == "POST":
+        message = request.form.get("message", "").strip()
+        if message:
+            conn = sqlite3.connect("alerts.db")
+            c = conn.cursor()
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS confessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    token TEXT,
+                    ip TEXT,
+                    location TEXT,
+                    latitude TEXT,
+                    longitude TEXT,
+                    user_agent TEXT,
+                    message TEXT,
+                    timestamp TEXT
+                )
+            ''')
+            c.execute('''
+                INSERT INTO confessions (token, ip, location, latitude, longitude, user_agent, message, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (token, ip, location_info["text"], lat, lon, user_agent, message, timestamp))
+            conn.commit()
+            conn.close()
 
-    # Email
+        log_line = (
+            f"[{timestamp}] ALERT: Token {token}\n"
+            f"IP: {ip}\n"
+            f"Location: {location_info['text']} (Coordinates: {lat},{lon})\n"
+            f"User-Agent: {user_agent}\n"
+            f"Message: {message}\n\n"
+        )
+
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(log_line)
+
+        send_email_alert("🚨 Canary Token Triggered", log_line)
+        return render_template("confess.html", submitted=True)
+
+    return render_template("confess.html", token=token)
+
+@app.route("/download-stego/<token>")
+def download_stego(token):
+    # Check if this is the sender downloading their own token
+    with open("sent_tokens.txt", "r") as f:
+        sent_tokens = f.read().splitlines()
+    if token in sent_tokens:
+        return send_file(f"stego_images/{token}.png", as_attachment=True)
+
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+    user_agent = request.headers.get("User-Agent", "Unknown")
+    timestamp = datetime.datetime.now().isoformat()
+    location_info = get_location(ip)
+    lat, lon = location_info['loc'].split(",")
+
     log_line = (
-        f"[{timestamp}] ALERT: Token {token}\n"
+        f"[{timestamp}] 🖼 Stego Image Downloaded: Token {token}\n"
         f"IP: {ip}\n"
-        f"Location: {location_info['text']} (Coordinates: {location_info['loc']})\n"
-        f"User-Agent: {user_agent}\n"
+        f"Location: {location_info['text']} (Coordinates: {lat},{lon})\n"
+        f"User-Agent: {user_agent}\n\n"
     )
-    send_email_alert("🚨 Canary Token Triggered", log_line)
 
-    return "📌 Token triggered and saved to DB."
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(log_line)
+
+    send_email_alert("📸 Stego Token Downloaded", log_line)
+
+    return send_file(f"stego_images/{token}.png", mimetype='image/png')
 
 @app.route("/alerts")
 def view_alerts():
     alerts = parse_alerts()
-    return render_template("alerts.html", alerts=alerts[::-1])
+
+    conn = sqlite3.connect("alerts.db")
+    c = conn.cursor()
+    c.execute("SELECT token, message, timestamp FROM confessions ORDER BY id DESC")
+    confessions = c.fetchall()
+    conn.close()
+
+    grouped_confessions = {}
+    for token, message, timestamp in confessions:
+        if token not in grouped_confessions:
+            grouped_confessions[token] = []
+        grouped_confessions[token].append({
+            "message": message,
+            "timestamp": timestamp
+        })
+
+    return render_template("alerts.html", alerts=alerts[::-1], grouped_confessions=grouped_confessions)
 
 @app.route("/clear-alerts")
 def clear_alerts():
-    conn = sqlite3.connect('alerts.db')
-    c = conn.cursor()
-    c.execute("DELETE FROM alerts")
-    conn.commit()
-    conn.close()
-    flash("Alerts cleared from database.", "success")
+    open(LOG_FILE, 'w').close()
+    flash("Alerts cleared.", "success")
     return redirect(url_for("view_alerts"))
 
 @app.route("/map")
