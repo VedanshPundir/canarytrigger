@@ -48,6 +48,6 @@ Built using **Flask**, **Tkinter**, and integrated with **Splunk**, the system m
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/VedanshPundir/canarytrigger.git
-cd canarytrigger
+git clone https://github.com/VedanshPundir/DecoySentinel.git
+cd DecoySentinel
 
