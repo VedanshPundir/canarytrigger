@@ -41,7 +41,7 @@ Built using **Flask**, **Tkinter**, and integrated with **Splunk**, the system m
 
 ## ⚙️ Tech Stack
 
-- **Frontend**: Tkinter (Decoy file GUI)
+- **Frontend**: HTML,CSS,JS (Decoy file GUI)
 - **Backend**: Flask (Python)
 - **Monitoring**: Splunk (SIEM), IP Geolocation API, Email Alerts
 - **Scripting**: Python 3.x, Shell (optional for automation)
