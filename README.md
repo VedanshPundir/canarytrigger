@@ -1,9 +1,9 @@
 # DecoySentinel: Strategic Deception Powered by Splunk Analytics
 
-![DecoySentinel Screenshot](dash3.png)
-![DecoySentinel Screenshot](dash1.png)
-![DecoySentinel Screenshot](dash4.png)
-![DecoySentinel Screenshot](dash5.png)
+![DecoySentinel Screenshot](screenshots/dash3.png)
+![DecoySentinel Screenshot](screenshots/dash1.png)
+![DecoySentinel Screenshot](screenshots/dash4.png)
+![DecoySentinel Screenshot](screenshots/dash5.png)
 
 
 ## 📌 Overview
@@ -52,6 +52,6 @@ Built using **Flask**, **Tkinter**, and integrated with **Splunk**, the system m
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/VedanshPundir/DecoySentinel.git
-cd DecoySentinel
+git clone https://github.com/VedanshPundir/canarytrigger.git
+cd canarytrigger
 
