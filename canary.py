@@ -89,7 +89,7 @@ def parse_alerts():
                 continue
     return alerts
 SPLUNK_HEC_URL = "http://localhost:8088/services/collector/event"
-SPLUNK_TOKEN = "dec81388-b21e-48e2-bd80-afd884974974"
+SPLUNK_TOKEN = "********-b21e-48e2-*****-************"
 
 def send_to_splunk(token, ip, location, user_agent, message, timestamp, username=None, password=None, success=None, attempts=None):
     payload = {
