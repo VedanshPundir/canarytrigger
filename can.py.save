@@ -190,7 +190,7 @@ def trigger(token):
         CREATE TABLE IF NOT EXISTS login_honeypot (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             token TEXT,
-            ip TEXT,
+             ip TEXT,
             location TEXT,
             latitude TEXT,
             longitude TEXT,

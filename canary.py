@@ -5,42 +5,21 @@ import uuid
 from docx import Document
 import requests
 import smtplib
+import qrcode
 from email.message import EmailMessage
 import sqlite3
-from PIL import Image, ImageDraw, ImageFont
-import stepic
+import json
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
 LOG_FILE = "alerts.log"
 
-EMAIL_ADDRESS = "your_email@gmail.com"
-EMAIL_PASSWORD = "your_app_password"
-TO_EMAIL = "alert_recipient@example.com"
-
-# Ensure required directories exist
-os.makedirs("stego_images", exist_ok=True)
-os.makedirs("tokens", exist_ok=True)
-os.makedirs("static", exist_ok=True)
+EMAIL_ADDRESS = ""
+EMAIL_PASSWORD = ""
+TO_EMAIL = ""
 
 if not os.path.exists(LOG_FILE):
     open(LOG_FILE, 'w').close()
-
-# Create a tiny transparent pixel image for tracking
-transparent_pixel_path = "static/transparent.png"
-if not os.path.exists(transparent_pixel_path):
-    img = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
-    img.save(transparent_pixel_path)
-base_image_path = "static/base.jpeg"
-if not os.path.exists(base_image_path):
-    img = Image.new('RGB', (800, 600), color=(73, 109, 137))
-    d = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("arial.ttf", 40)
-    except:
-        font = ImageFont.load_default()
-    d.text((100, 300), "COMPANY CONFIDENTIAL", fill=(255, 255, 255), font=font)
-    img.save(base_image_path)
 
 def send_email_alert(subject, body):
     try:
@@ -109,15 +88,47 @@ def parse_alerts():
                 print(f"Parse error: {e}")
                 continue
     return alerts
+SPLUNK_HEC_URL = "http://localhost:8088/services/collector/event"
+SPLUNK_TOKEN = "dec81388-b21e-48e2-bd80-afd884974974"
+
+def send_to_splunk(token, ip, location, user_agent, message, timestamp, username=None, password=None, success=None, attempts=None):
+    payload = {
+        "event": {
+            "token": token,
+            "ip": ip,
+            "location": location,
+            "user_agent": user_agent,
+            "message": message,
+            "timestamp": timestamp,
+            "username": username,
+            "password": password,
+            "login_success": success,
+            "login_attempts": attempts
+        },
+        "sourcetype": "_json"
+    }
+
+    headers = {
+        "Authorization": f"Splunk {SPLUNK_TOKEN}"
+    }
+
+    try:
+        res = requests.post(SPLUNK_HEC_URL, headers=headers, data=json.dumps(payload), verify=False)
+        if res.status_code != 200:
+            print("Splunk HEC Error:", res.text)
+    except Exception as e:
+        print("Error sending to Splunk:", e)
 
 @app.route('/alerts-count')
 def alerts_count():
     count = 0
     try:
         with open("alerts.log", "r") as file:
-            count = sum(1 for _ in file)
-    except:
-        pass
+            content = file.read().strip()
+            if content:
+                count = len(content.split("\n\n"))
+    except Exception as e:
+        print(f"Error reading alerts.log: {e}")
     return {"count": count}
 
 @app.route("/")
@@ -132,88 +143,34 @@ def home():
 def generate_url_token():
     token = str(uuid.uuid4())
     url = request.host_url + "trigger/" + token
-    tracking_url = request.host_url + "track/" + token
-
-    # Create steganography image
-    try:
-        image = Image.open(base_image_path)
-        encoded = stepic.encode(image, url.encode())
-        stego_path = f"stego_images/{token}.png"
-        
-        # Add visible watermark
-        draw = ImageDraw.Draw(encoded)
-        try:
-            # Try to load a nice font
-            font = ImageFont.truetype("arial.ttf", 20)
-        except IOError:
-            # Fall back to default font if arial isn't available
-            font = ImageFont.load_default()
-        
-        # Add watermark text
-        watermark_text = "INTERNAL USE ONLY"
-        text_width, text_height = draw.textsize(watermark_text, font=font)
-        
-        # Position watermark in bottom right corner
-        margin = 10
-        x = image.width - text_width - margin
-        y = image.height - text_height - margin
-        
-        draw.text((x, y), watermark_text, fill=(255, 0, 0, 128), font=font)
-        encoded.save(stego_path, "PNG")
-        
-    except Exception as e:
-        print(f"Error creating stego image: {e}")
-        flash("Error generating token image", "error")
-        return redirect(url_for("home"))
-
-    # Save token to suppress sender's download alert
-    with open("sent_tokens.txt", "a") as f:
-        f.write(token + "\n")
-
-    return render_template("generate_token.html", 
-                         url=url,
-                         image_url=f"/download-stego/{token}",
-                         tracking_pixel=tracking_url)
-@app.route("/track/<token>")
-def track_image_open(token):
-    # Check if this is the sender accessing their own token
-    with open("sent_tokens.txt", "r") as f:
-        sent_tokens = f.read().splitlines()
-    if token in sent_tokens:
-        return send_file(transparent_pixel_path, mimetype='image/png')
-
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-    user_agent = request.headers.get("User-Agent", "Unknown")
-    timestamp = datetime.datetime.now().isoformat()
-    location_info = get_location(ip)
-    lat, lon = location_info['loc'].split(",")
-
-    log_line = (
-        f"[{timestamp}] 👁 Stego Image Viewed: Token {token}\n"
-        f"IP: {ip}\n"
-        f"Location: {location_info['text']} (Coordinates: {lat},{lon})\n"
-        f"User-Agent: {user_agent}\n\n"
-    )
-
-    with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(log_line)
-
-    send_email_alert("👁 Stego Image Viewed", log_line)
-    
-    return send_file(transparent_pixel_path, mimetype='image/png')
+    return render_template("generate_token.html", url=url)
 
 @app.route("/word-token")
 def generate_doc_token():
     token = str(uuid.uuid4())
     url = request.host_url + "trigger/" + token
 
+    # Create Word Document
     document = Document()
     document.add_heading('Company Confidential', 0)
-    document.add_paragraph('This document is sensitive.')
-    document.add_paragraph(f'Hidden link: {url}')
+    document.add_paragraph('This document is sensitive and should only be accessed by the legitimate user.')
 
+    # Generate QR Code
+    qr = qrcode.make(url)
+    os.makedirs("qrcodes", exist_ok=True)
+    qr_path = f"qrcodes/{token}.png"
+    qr.save(qr_path)
+
+    # Insert QR Code into Word Document
+    document.add_paragraph("Scan this QR code to access:")
+    document.add_picture(qr_path)
+
+    # Save DOCX
+    os.makedirs("tokens", exist_ok=True)
     file_path = f"tokens/{token}.docx"
     document.save(file_path)
+
+    return send_file(file_path, as_attachment=True)
 
     return send_file(file_path, as_attachment=True)
 
@@ -225,79 +182,113 @@ def trigger(token):
     timestamp = datetime.datetime.now().isoformat()
     lat, lon = location_info['loc'].split(",")
 
-    if request.method == "POST":
-        message = request.form.get("message", "").strip()
-        if message:
-            conn = sqlite3.connect("alerts.db")
-            c = conn.cursor()
-            c.execute('''
-                CREATE TABLE IF NOT EXISTS confessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    token TEXT,
-                    ip TEXT,
-                    location TEXT,
-                    latitude TEXT,
-                    longitude TEXT,
-                    user_agent TEXT,
-                    message TEXT,
-                    timestamp TEXT
-                )
-            ''')
-            c.execute('''
-                INSERT INTO confessions (token, ip, location, latitude, longitude, user_agent, message, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (token, ip, location_info["text"], lat, lon, user_agent, message, timestamp))
-            conn.commit()
-            conn.close()
+    conn = sqlite3.connect("alerts.db")
+    c = conn.cursor()
 
+    # Create vulnerable login table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS login_honeypot (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token TEXT,
+            ip TEXT,
+            location TEXT,
+            latitude TEXT,
+            longitude TEXT,
+            user_agent TEXT,
+            username TEXT,
+            password TEXT,
+            success INTEGER,
+            timestamp TEXT
+        )
+    ''')
+
+    # Count attempts from this IP/token
+    c.execute("SELECT COUNT(*) FROM login_honeypot WHERE ip = ? AND token = ?", (ip, token))
+    attempt_count = c.fetchone()[0]
+
+    success = False
+    username = password = ""
+
+    if request.method == "POST":
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+
+        # INTENTIONAL VULNERABLE QUERY
+        query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
+
+        try:
+            c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT, password TEXT)')
+            c.execute("INSERT INTO users (username, password) VALUES ('admin', 'admin123')")  # dummy
+            conn.commit()
+            c.execute(query)
+            result = c.fetchone()
+            if result:
+                success = True
+        except Exception as e:
+            print("SQL Error:", e)
+
+        # Log to DB
+        c.execute('''
+            INSERT INTO login_honeypot (token, ip, location, latitude, longitude, user_agent, username, password, success, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (token, ip, location_info["text"], lat, lon, user_agent, username, password, int(success), timestamp))
+        conn.commit()
+
+        # Log to alerts.log
         log_line = (
-            f"[{timestamp}] ALERT: Token {token}\n"
+            f"[{timestamp}] Token {token}\n"
             f"IP: {ip}\n"
             f"Location: {location_info['text']} (Coordinates: {lat},{lon})\n"
             f"User-Agent: {user_agent}\n"
-            f"Message: {message}\n\n"
+            f"Username: {username} | Password: {password}\n"
+            f"Login Success: {success}\n\n"
         )
 
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(log_line)
 
-        send_email_alert("🚨 Canary Token Triggered", log_line)
-        return render_template("confess.html", submitted=True)
+        # Send alerts
+        send_email_alert("🚨 Login Honeypot Triggered", log_line)
+        send_to_splunk(
+            token=token,
+            ip=ip,
+            location=location_info["text"],
+            user_agent=user_agent,
+            message=f"{username}:{password}",
+            timestamp=timestamp,
+            username=username,
+            password=password,
+            success=success,
+            attempts=attempt_count + 1 if not success else attempt_count
+        )
 
-    return render_template("confess.html", token=token)
+    conn.close()
 
-@app.route("/download-stego/<token>")
-def download_stego(token):
-    # Check if this is the sender downloading their own token
-    with open("sent_tokens.txt", "r") as f:
-        sent_tokens = f.read().splitlines()
-    if token in sent_tokens:
-        return send_file(f"stego_images/{token}.png", as_attachment=True)
+    return render_template("login.html", success=success, attempts=(attempt_count + 1 if not success else attempt_count))
 
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-    user_agent = request.headers.get("User-Agent", "Unknown")
-    timestamp = datetime.datetime.now().isoformat()
-    location_info = get_location(ip)
-    lat, lon = location_info['loc'].split(",")
+    conn.close()
 
-    log_line = (
-        f"[{timestamp}] 🖼 Stego Image Downloaded: Token {token}\n"
-        f"IP: {ip}\n"
-        f"Location: {location_info['text']} (Coordinates: {lat},{lon})\n"
-        f"User-Agent: {user_agent}\n\n"
-    )
+    return render_template("login.html", success=success, attempts=(attempt_count + 1 if not success else attempt_count))
+"""@app.route("/alerts")
+def view_alerts():
+    alerts = parse_alerts()
 
-    with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(log_line)
+    # Load confessions
+    conn = sqlite3.connect("alerts.db")
+    c = conn.cursor()
+    c.execute("SELECT token, ip, location, latitude, longitude, user_agent, message, timestamp FROM login_honeypot ORDER BY id DESC")
+    confessions = c.fetchall()
+    conn.close()
 
-    send_email_alert("📸 Stego Token Downloaded", log_line)
 
-    return send_file(f"stego_images/{token}.png", mimetype='image/png')
+
+    return render_template("alerts.html", alerts=alerts[::-1], confessions=confessions)"""
 
 @app.route("/alerts")
 def view_alerts():
     alerts = parse_alerts()
 
+    # Load and group confessions
     conn = sqlite3.connect("alerts.db")
     c = conn.cursor()
     c.execute("SELECT token, message, timestamp FROM confessions ORDER BY id DESC")
