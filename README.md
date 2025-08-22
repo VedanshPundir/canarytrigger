@@ -1,9 +1,8 @@
 # DecoySentinel: Strategic Deception Powered by Splunk Analytics
 
 ![DecoySentinel Screenshot](screenshots/dash3.png)
-![DecoySentinel Screenshot](screenshots/dash1.png)
-![DecoySentinel Screenshot](screenshots/dash4.png)
-![DecoySentinel Screenshot](screenshots/dash5.png)
+![DecoySentinel Screenshot](screenshots/dashboard.png)
+
 
 
 ## 📌 Overview
